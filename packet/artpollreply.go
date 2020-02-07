@@ -3,7 +3,7 @@ package packet
 import (
 	"fmt"
 
-	"github.com/jsimonetti/go-artnet/packet/code"
+	"github.com/deadbeefcafe/go-artnet/packet/code"
 )
 
 var _ ArtNetPacket = &ArtPollReplyPacket{}
