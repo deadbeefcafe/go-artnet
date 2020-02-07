@@ -40,6 +40,7 @@ func NewDefaultLogger() Logger {
 
 	// Only log the debug severity or above.
 	log.Level = logrus.DebugLevel
+	//log.Level = logrus.InfoLevel
 
 	// Disable concurrency mutex as we use Stdout
 	log.SetNoLock()

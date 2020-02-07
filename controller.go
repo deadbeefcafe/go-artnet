@@ -3,6 +3,7 @@ package artnet
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -12,7 +13,9 @@ import (
 )
 
 var broadcastAddr = net.UDPAddr{
-	IP:   []byte{0x02, 0xff, 0xff, 0xff},
+	//IP:   []byte{0x02, 0xff, 0xff, 0xff},
+	//IP:   []byte{192, 168, 10, 0xff},
+	IP:   []byte{0xff, 0xff, 0xff, 0xff},
 	Port: int(packet.ArtNetPort),
 }
 
@@ -24,6 +27,7 @@ type ControlledNode struct {
 	LastSeen   time.Time
 	Node       NodeConfig
 	UDPAddress net.UDPAddr
+	BindIndex  uint8
 
 	Sequence  uint8
 	DMXBuffer map[Address]*dmxBuffer
@@ -226,6 +230,7 @@ func (c *Controller) dmxUpdateLoop() {
 	ticker := time.NewTicker(time.Second / fpsInterval)
 
 	forceUpdate := 250 * time.Millisecond
+	//forceUpdate := 2000 * time.Millisecond
 
 	update := func(node *ControlledNode, address Address, now time.Time) error {
 		// get an ArtDMXPacket for this node
@@ -252,7 +257,15 @@ func (c *Controller) dmxUpdateLoop() {
 			c.nodeLock.Lock()
 			for address, node := range c.OutputAddress {
 				// only update if it has been X seconds
-				if node.DMXBuffer[address].Stale && node.DMXBuffer[address].LastUpdate.Before(now.Add(-fpsInterval)) {
+				//if node.DMXBuffer[address].Stale && node.DMXBuffer[address].LastUpdate.Before(now.Add(-fpsInterval)) {
+				log.Printf("address=%v", address)
+				//log.Printf("node.DMXBuffer=%v", node.DMXBuffer)
+				//log.Printf("node.DMXBuffer[address]=%v", node.DMXBuffer[address])
+				if node.DMXBuffer[address] == nil {
+					continue
+				}
+
+				if node.DMXBuffer[address].Stale && time.Since(node.DMXBuffer[address].LastUpdate) > fpsInterval {
 					err := update(node, address, now)
 					if err != nil {
 						c.log.With(Fields{"err": err, "address": address.String()}).Error("error getting buffer for address")
@@ -283,7 +296,7 @@ func (c *Controller) updateNode(cfg NodeConfig) error {
 	defer c.nodeLock.Unlock()
 
 	for i := range c.Nodes {
-		if bytes.Equal(cfg.IP, c.Nodes[i].Node.IP) {
+		if bytes.Equal(cfg.IP, c.Nodes[i].Node.IP) && cfg.BindIndex == c.Nodes[i].Node.BindIndex {
 			// update this node, since we allready know about it
 			c.log.With(Fields{"node": cfg.Name, "ip": cfg.IP.String()}).Debug("updated node")
 			// remove references to this node from the output map
@@ -313,12 +326,13 @@ func (c *Controller) updateNode(cfg NodeConfig) error {
 	}
 
 	// new node, add it to our known nodes
-	c.log.With(Fields{"node": cfg.Name, "ip": cfg.IP.String()}).Debug("added node")
+	c.log.With(Fields{"node": cfg.Name, "ip": cfg.IP.String(), "bindindex": cfg.BindIndex}).Debug("added node")
 	node := &ControlledNode{
 		Node:       cfg,
 		DMXBuffer:  buf,
 		LastSeen:   time.Now(),
 		Sequence:   0,
+		BindIndex:  cfg.BindIndex,
 		UDPAddress: net.UDPAddr{IP: cfg.IP, Port: int(packet.ArtNetPort)},
 	}
 	c.Nodes = append(c.Nodes, node)

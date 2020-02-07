@@ -31,7 +31,7 @@ type InputPort struct {
 	Status  code.GoodInput
 }
 
-// OutputPort contains information for an input port
+// OutputPort contains information for an output port
 type OutputPort struct {
 	Address Address
 	Type    code.PortType

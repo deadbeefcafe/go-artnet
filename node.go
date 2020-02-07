@@ -256,6 +256,7 @@ func (n *Node) recvLoop() {
 
 // handlePacket contains the logic for dealing with incoming packets
 func (n *Node) handlePacket(p packet.ArtNetPacket) {
+	//log.Printf("handlePacket p=%#v", p)
 	callback, ok := n.callbacks[p.GetOpCode()]
 	if !ok {
 		n.log.With(Fields{"packet": p}).Debugf("ignoring unhandled packet")
