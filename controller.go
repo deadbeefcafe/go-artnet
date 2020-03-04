@@ -3,7 +3,6 @@ package artnet
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -20,7 +19,7 @@ var broadcastAddr = net.UDPAddr{
 }
 
 // we poll for new nodes every 3 seconds
-var pollInterval = 3 * time.Second
+var pollInterval = 10 * time.Second
 
 // ControlledNode hols the configuration of a node we control
 type ControlledNode struct {
@@ -38,6 +37,69 @@ type dmxBuffer struct {
 	Data       [512]byte
 	LastUpdate time.Time
 	Stale      bool
+}
+
+// setDMXBuffer will update the buffer on a universe address
+func (c *Controller) SetDMXValue(address Address, ch uint16, val uint8) error {
+	c.nodeLock.Lock()
+	defer c.nodeLock.Unlock()
+
+	var cn *ControlledNode
+	var ok bool
+
+	if cn, ok = c.OutputAddress[address]; !ok {
+		c.log.With(Fields{"address": address.String()}).Error("SetDMXValue: could not find node for address")
+		return fmt.Errorf("could not find node for address")
+	}
+
+	cn.nodeLock.Lock()
+	defer cn.nodeLock.Unlock()
+
+	var buf *dmxBuffer
+
+	if buf, ok = cn.DMXBuffer[address]; !ok {
+		return fmt.Errorf("unknown address for controlled node")
+	}
+
+	if ch < 0 || ch >= 512 {
+		return fmt.Errorf("invalid channel")
+	}
+
+	buf.Data[ch] = val
+	buf.Stale = true
+
+	return nil
+}
+
+// GetDMXBufferCopy will return a slice copy of the current DMX value buffer
+func (c *Controller) GetDMXBufferCopy(address Address) (b []byte, err error) {
+	c.nodeLock.Lock()
+	defer c.nodeLock.Unlock()
+
+	var cn *ControlledNode
+	var ok bool
+
+	if cn, ok = c.OutputAddress[address]; !ok {
+		err = fmt.Errorf("could not find node for address")
+		return
+	}
+
+	cn.nodeLock.Lock()
+	defer cn.nodeLock.Unlock()
+
+	var buf *dmxBuffer
+
+	if buf, ok = cn.DMXBuffer[address]; !ok {
+		err = fmt.Errorf("unknown address for controlled node")
+		return
+	}
+
+	b = make([]byte, 512)
+	for n, v := range buf.Data {
+		b[n] = v
+	}
+
+	return
 }
 
 // setDMXBuffer will update the buffer on a universe address
@@ -229,8 +291,8 @@ func (c *Controller) dmxUpdateLoop() {
 	fpsInterval := time.Duration(c.maxFPS)
 	ticker := time.NewTicker(time.Second / fpsInterval)
 
-	forceUpdate := 250 * time.Millisecond
-	//forceUpdate := 2000 * time.Millisecond
+	//forceUpdate := 250 * time.Millisecond
+	forceUpdate := 7000 * time.Millisecond
 
 	update := func(node *ControlledNode, address Address, now time.Time) error {
 		// get an ArtDMXPacket for this node
@@ -258,7 +320,7 @@ func (c *Controller) dmxUpdateLoop() {
 			for address, node := range c.OutputAddress {
 				// only update if it has been X seconds
 				//if node.DMXBuffer[address].Stale && node.DMXBuffer[address].LastUpdate.Before(now.Add(-fpsInterval)) {
-				log.Printf("address=%v", address)
+				//log.Printf(" address=%v", address)
 				//log.Printf("node.DMXBuffer=%v", node.DMXBuffer)
 				//log.Printf("node.DMXBuffer[address]=%v", node.DMXBuffer[address])
 				if node.DMXBuffer[address] == nil {
