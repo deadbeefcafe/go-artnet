@@ -19,7 +19,7 @@ var broadcastAddr = net.UDPAddr{
 }
 
 // we poll for new nodes every 3 seconds
-var pollInterval = 10 * time.Second
+var pollInterval = 3 * time.Second
 
 // ControlledNode hols the configuration of a node we control
 type ControlledNode struct {
@@ -156,6 +156,7 @@ type Controller struct {
 	nodeLock      sync.Mutex
 
 	shutdownCh chan struct{}
+	NodeUpdate chan string
 
 	maxFPS int
 	log    Logger
@@ -184,6 +185,7 @@ func (c *Controller) Start() error {
 	c.OutputAddress = make(map[Address]*ControlledNode)
 	c.InputAddress = make(map[Address]*ControlledNode)
 	c.shutdownCh = make(chan struct{})
+	c.NodeUpdate = make(chan string)
 	c.cNode.log = c.log.With(Fields{"type": "Node"})
 	c.log = c.log.With(Fields{"type": "Controller"})
 	if err := c.cNode.Start(); err != nil {
@@ -242,6 +244,7 @@ func (c *Controller) pollLoop() {
 				data:    b,
 			}
 			c.cNode.pollCh <- packet.ArtPollPacket{}
+			//c.log.Printf("XXX sent ArtPollPacket")
 
 		case <-c.gcTicker.C:
 			// clean up old nodes
@@ -399,6 +402,9 @@ func (c *Controller) updateNode(cfg NodeConfig) error {
 	}
 	c.Nodes = append(c.Nodes, node)
 
+	c.log.Printf("ADD Node %s %s bind=%v", cfg.Name, cfg.IP.String(), cfg.BindIndex)
+	c.NodeUpdate <- "New NODE"
+
 	// add references to this node to the output map
 	for _, port := range node.Node.OutputPorts {
 		c.OutputAddress[port.Address] = node
@@ -446,7 +452,9 @@ start:
 	for i := range c.Nodes {
 		if c.Nodes[i].LastSeen.Add(staleAfter).Before(time.Now()) {
 			// it has been more then X seconds since we saw this node. remove it now.
-			c.log.With(Fields{"node": c.Nodes[i].Node.Name, "ip": c.Nodes[i].Node.IP.String()}).Debug("remove stale node")
+			c.log.With(Fields{"node": c.Nodes[i].Node.Name, "ip": c.Nodes[i].Node.IP.String()}).Debug("XXX remove stale node")
+			c.log.Printf("DEL Node %s bind=%v", c.Nodes[i].UDPAddress.IP.String(), c.Nodes[i].BindIndex)
+			c.NodeUpdate <- "Del NODE"
 
 			// remove references to this node from the output map
 			for _, port := range c.Nodes[i].Node.OutputPorts {
